@@ -2,7 +2,9 @@ import {User} from "../models/user.model.js"
 import bcryptjs from "bcryptjs"
 import crypto from "crypto"
 import {generateTokenAndSetCookie} from "../utils/generateTokenAndSetCookie.js"
-import {sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail,sendResetSuccessEmail} from "../mailtrap/emails.js"
+
+import { sendEmail } from "../mail/mailer.js";
+import {VERIFICATION_EMAIL_TEMPLATE, WELCOME_EMAIL_TEMPLATE, PASSWORD_RESET_SUCCESS_TEMPLATE, PASSWORD_RESET_REQUEST_TEMPLATE} from "../mail/emailTemplate.js"
 
 
 export const signup = async (req, res) => {
@@ -29,7 +31,14 @@ export const signup = async (req, res) => {
 
         //jwt
         generateTokenAndSetCookie(res,user._id);
-        //  await sendVerificationEmail(user.email, verificationToken);
+
+          await sendEmail({
+            to: email,
+            subject: "Welcome to My App!",
+            text: "Thanks for signing up 🎉",
+            html: VERIFICATION_EMAIL_TEMPLATE.replace("{verificationCode}", verificationToken),
+            });
+
 
         res.status(201).json({success: true, message: "User created successfully",
             user:{
@@ -51,11 +60,20 @@ export const verifyEmail = async (req, res) => {
         if(!user){
             return res.status(400).json({success: false, message: "Invalid or expired verification code"});
         }
+    
+        await sendEmail({
+            to: user.email,
+            subject: "Email Verified Successfully",
+            text: "Your email has been verified successfully. You can now access all features of our application.",
+            html: WELCOME_EMAIL_TEMPLATE.replace("{name}", user.name),
+            });
+
         user.isVerified = true;
         user.verificationToken = undefined;
         user.verificationTokenExpiresAt = undefined;
+
         await user.save();
-        // await sendWelcomeEmail(user.email, user.name);
+
         res.status(200).json({
             success: true, 
             message: "Email verified successfully",
@@ -115,7 +133,13 @@ export const forgotPassword = async (req,res) => {
         user.resetPasswordExpiresAt = resetTokenExpiresAt;
 
         await user.save();
-        // await sendPasswordResetEmail(user.email,`${process.env.CLIENT_URL}/reset-password/${resetToken}`);
+        await sendEmail({
+            to: user.email,
+            subject: "Password Reset Request",
+            text: `You requested a password reset. Use the following link to reset your password: ${process.env.FRONTEND_URL}/reset-password/${resetToken}. This link expires in 1 hour.`,
+            html: PASSWORD_RESET_REQUEST_TEMPLATE.replace("{resetURL}", `${process.env.FRONTEND_URL}/reset-password/${resetToken}`),
+            });
+       
         res.status(200).json({success: true, message: "Password reset email sent"});
 
     }catch(err){ 
@@ -141,7 +165,12 @@ export const resetPassword = async (req,res) => {
         user.resetPasswordExpiresAt = undefined;
         await user.save();
 
-        // await sendResetSuccessEmail(user.email);
+         await sendEmail({
+            to: user.email,
+            subject: "Password Reset Successful",
+            text: "Your password has been reset successfully.",
+            html: PASSWORD_RESET_SUCCESS_TEMPLATE,
+        });
 
         res.status(200).json({success: true, message: "Password reset successfully"});
     }catch(err){

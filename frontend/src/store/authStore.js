@@ -46,7 +46,7 @@ export const useAuthStore = create((set)=>({
     verifyEmail: async (verificationCode)=>{
         set({isLoading: true, error: null});
         try{
-            const response = await axios.post(`${API_URL}/verify-email`, {verificationCode});
+            const response = await axios.post(`${API_URL}/verify-email`, { code: String(verificationCode).trim() });
             set({user: response.data.user, isAuthenticated: true, isLoading: false});
             return response.data; // Return the response data for further use if needed
         }catch(err){
