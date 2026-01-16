@@ -18,20 +18,22 @@ export const signup = async (req, res) => {
             return res.status(400).json({success:false, message: "User already exists"});
         }
         const hashedPassword = await bcryptjs.hash(password, 10);
-        const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();//generează un cod de verificare din 6 cifre, sub formă de string
 
         const user = new User({
             email,
             password: hashedPassword,
             name,
             verificationToken,
-            verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000//24 hours
+            verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000
         })
         await user.save();
 
         //jwt
         generateTokenAndSetCookie(res,user._id);
 
+
+        //send verification email
           await sendEmail({
             to: email,
             subject: "Welcome to My App!",
@@ -41,10 +43,13 @@ export const signup = async (req, res) => {
 
 
         res.status(201).json({success: true, message: "User created successfully",
-            user:{
-                ...user._doc,
-                password: undefined,
-            }
+            user: {
+            _id: user._id,
+            email: user.email,
+            name: user.name,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt
+        }
         })
     }catch(err){
         res.status(400).json({success: false, message: err.message})
@@ -55,12 +60,13 @@ export const verifyEmail = async (req, res) => {
     try{
         const user = await User.findOne({
 			verificationToken: code,
-			verificationTokenExpiresAt: { $gt: Date.now() },
+			verificationTokenExpiresAt: { $gt: Date.now() }, // Verifică dacă tokenul nu a expirat
 		});
         if(!user){
             return res.status(400).json({success: false, message: "Invalid or expired verification code"});
         }
-    
+        
+        //email verified, send welcome email
         await sendEmail({
             to: user.email,
             subject: "Email Verified Successfully",
@@ -100,9 +106,13 @@ export const login = async (req, res) => {
         if(!isPasswordValid){
             return res.status(400).json({success: false, message: "Invalid credentials"});
         }
+
         generateTokenAndSetCookie(res,user._id);
+
         user.lastLogin = new Date();
+
         await user.save();
+
         res.status(200).json({
             success: true,
             message: "Logged in successfully",
@@ -113,13 +123,16 @@ export const login = async (req, res) => {
             });
         
     }catch(err){
-        res.status(400).json({success: false, message: err.message})
+        res.status(500).json({success: false, message: err.message})
     }
 };
 export const logout = async (req, res) => {
+
     res.clearCookie("token");
+    
     res.status(200).json({success: true, message: "Logged out successfully"});
 };
+
 export const forgotPassword = async (req,res) => {
     const {email} = req.body;
     try{
@@ -127,12 +140,14 @@ export const forgotPassword = async (req,res) => {
         if(!user){
             return res.status(400).json({success: false, message: "User not found"});
         }
-        const resetToken = crypto.randomBytes(20).toString("hex");
+        const resetToken = crypto.randomBytes(20).toString("hex"); //generează un token de resetare parolă foarte sigur
         const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000;//1 hours'
         user.resetPasswordToken = resetToken;
         user.resetPasswordExpiresAt = resetTokenExpiresAt;
 
         await user.save();
+        
+        //email reset password
         await sendEmail({
             to: user.email,
             subject: "Password Reset Request",
